@@ -1,0 +1,8 @@
+tensorflow-macos
+tensorflow-metal
+numpy
+opencv-python
+mss
+pynput
+Pillow
+scikit-learn

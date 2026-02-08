@@ -1,0 +1,17 @@
+# Environment
+venv/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Data & Models
+data/
+model/
+*.h5
+*.npz
+
+# macOS
+.DS_Store
