@@ -12,12 +12,9 @@ IMG_SIZE = 64
 MODEL_PATH = "model/best_model.h5"
 
 # Control keys
-# Mac uses Key.cmd, Key.ctrl, or characters
-# We need to simulate pressing 'd' (gas) and 'a' (brake)
-# no setup needed for pyautogui
 
 def mask_ui(frame):
-    # MUST match preprocess.py exactly!
+    # match preprocess.py!
     h, w = frame.shape[:2]
     frame[0:int(h*0.20), :] = 0    # Top
     frame[int(h*0.65):, :] = 0     # Bottom
@@ -76,7 +73,6 @@ def main():
             print(f"Action: {action_str} ({confidence:.2f})")
             
             # 4. Display (Overlay)
-            # Draw prediction on the frame to see what AI sees
             display_frame = cv2.resize(frame, (400, 300))
             cv2.putText(display_frame, f"Action: {action_str}", (10, 30), 
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -88,7 +84,6 @@ def main():
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
             
-            # Limit loop speed strictly to avoid spamming keys
             time.sleep(0.1)
 
     cv2.destroyAllWindows()
