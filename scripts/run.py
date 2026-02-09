@@ -6,7 +6,6 @@ import tensorflow as tf
 import pyautogui
 
 # === CONFIGURATION ===
-# MUST match what you used in training!
 CAPTURE_REGION = {"top": 75, "left": 17, "width": 1401, "height": 790}
 IMG_SIZE = 64
 MODEL_PATH = "model/best_model.h5"
