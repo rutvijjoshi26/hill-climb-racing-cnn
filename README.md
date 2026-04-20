@@ -1,112 +1,123 @@
-# 🚗 Hill Climb Racing AI (Behavioral Cloning)
+# Hill Climb Racing AI: Behavioral Cloning + PPO
 
-This project trains an AI to play *Hill Climb Racing* by watching you play. It uses a Convolutional Neural Network (CNN) to predict driving actions (Accelerate/Brake) from game screenshots in real-time.
+This project trains a visual driving agent for *Hill Climb Racing* from raw `64x64` pixel frames. The training flow now matches the supervised-pretraining-then-RL pattern used in modern agent systems:
 
-## 🛠️ Setup
+1. Record human gameplay and train a CNN policy with behavioral cloning.
+2. Fine-tune that visual policy online with PPO.
+3. Optimize against reward signals derived from forward progress and fuel efficiency proxies extracted directly from the game screen.
 
-1. **Install Dependencies** (Optimized for macOS Apple Silicon)
+The project includes the full loop end to end: screen capture, preprocessing, action dispatch, reward extraction, PPO optimization, and a `pyautogui` failsafe.
+
+## Setup
+
+1. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-   *Note: Uses `tensorflow-macos` and `tensorflow-metal` for M1/M2/M3 chips.*
+2. Grant Accessibility permissions on macOS:
+   - Open **System Settings > Privacy & Security > Accessibility**
+   - Allow your terminal or IDE to control the computer
 
-2. **Grant Accessibility Permissions**
-   - Go to **System Settings > Privacy & Security > Accessibility**
-   - Allow your Terminal (or VS Code / IDE) to control the computer.
-   - *Why?* The script needs to listen to your keys (data collection) and press keys (AI driving).
+## Workflow
 
----
+### Phase 1: Record Human Gameplay
 
-## 🚀 How to Run (Step-by-Step)
+Capture state-action pairs from your own driving:
 
-### Phase 1: data Collection 📸
-Play the game and let the script record your moves.
+```bash
+python scripts/datacapture.py
+```
 
-1. Open **Hill Climb Racing**.
-2. Run the capture script:
-   ```bash
-   python scripts/datacapture.py
-   ```
-3. Switch to the game window immediately.
-4. **Play normally!**
-   - Controls: `D` = Gas, `A` = Brake.
-   - The script records screen frames + your key presses.
-5. Press **ESC** to stop recording.
-   - Frames are saved in `data/raw_frames/`.
-   - *Goal:* Collect at least 5,000 - 10,000 frames for a good model.
+- `D` = gas
+- `A` = brake
+- `ESC` stops capture
+- Frames are saved in `data/raw_frames/`
 
-### Phase 2: Preprocessing 🧹
-Clean the data and prepare it for training.
+Target at least `10K+` labeled frames if you want PPO to start from a useful policy instead of learning from scratch.
 
-1. Run the preprocessor:
-   ```bash
-   python scripts/preprocess.py
-   ```
-2. What it does:
-   - Loads raw frames.
-   - **Masks UI:** Blacks out fuel bar, scores, and pedals (so AI focuses on the hill).
-   - **Resizes:** Downscales to 64x64 pixels.
-   - Saves everything to `data/hcr_dataset.npz`.
+### Phase 2: Preprocess the Dataset
 
-### Phase 3: Train the Model
-Train the Neural Network on your gameplay data.
+```bash
+python scripts/preprocess.py
+```
 
-1. Run the training script:
-   ```bash
-   python scripts/train.py
-   ```
-2. It will:
-   - Load the dataset.
-   - Train for up to 50 epochs (stops early if no improvement).
-   - Save the best model to `model/best_model.h5`.
-   - *Tip:* If accuracy is low (<60%), record more data!
+This converts the captured images into `data/hcr_dataset.npz`:
 
-### Phase 4: AI Driver (Inference)
-Let the AI take the wheel!
+- UI is masked for policy learning
+- Frames are resized to `64x64`
+- Labels are preserved from the filename convention
 
-1. Open **Hill Climb Racing**.
-2. Run the driver script:
-   ```bash
-   python scripts/run.py
-   ```
-3. Switch to the game window.
-4. Watch it drive!
-5. **To Stop:** Move your mouse cursor to the top-left corner of the screen (failsafe) or press `Ctrl+C` in terminal.
+### Phase 3: Behavioral Cloning Pretraining
 
----
+```bash
+python scripts/train.py
+```
 
-## ⚙️ Configuration
+This trains the initial CNN policy and saves:
 
-If you move the game window or use a different screen, you MUST update the capture coordinates!
+- `model/policy_pretrained.keras`
+- `model/policy_final.keras`
 
-1. **Find Coordinates:**
-   Use a screenshot tool or trial-and-error to find `top`, `left`, `width`, `height`.
+### Phase 4: PPO Fine-Tuning
 
-2. **Update Files:**
-   Update `CAPTURE_REGION` in **BOTH** files:
-   - `scripts/datacapture.py`
-   - `scripts/run.py`
+Open the game and run:
 
-   ```python
-   # Example
-   CAPTURE_REGION = {"top": 75, "left": 17, "width": 1401, "height": 790}
-   ```
+```bash
+python scripts/ppo_finetune.py
+```
 
----
+The PPO loop:
 
-## 🔧 Troubleshooting
+- Captures the live game screen
+- Feeds `64x64` pixel observations into the policy/value network
+- Samples actions and dispatches them with `pyautogui`
+- Computes rewards from forward progress and fuel-efficiency heuristics
+- Updates the policy with PPO
+- Saves checkpoints to `model/ppo_actor_critic.keras`
+- Uses `AUTO_RESET_KEYS` in `scripts/rl_env.py` if you want episode resets to be automated
 
-| Issue | Fix |
-|-------|-----|
-| **Keys not working** | Check Accessibility permissions in System Settings. Toggle off/on. |
-| **"System Events" popup** | Allow the permission. Ensure you are using `pyautogui` (in run.py). |
-| **AI drives off cliffs** | You need more training data! Record more "recovery" moves. |
-| **Model prediction error** | Ensure `IMG_SIZE` is 64 in all scripts. |
+### Phase 5: Run the Fine-Tuned Agent
 
----
+```bash
+python scripts/run.py
+```
 
-## 🧠 Model Architecture
+- Loads `model/ppo_actor_critic.keras`
+- Runs the PPO policy head in real time
+- Press `q` in the preview window or `Ctrl+C` in the terminal to stop
+- Moving the cursor to the top-left corner will trigger the `pyautogui` failsafe
 
-- **Input:** 64x64 RGB Image
-- **Layers:** 3x Conv2D + MaxPooling (Feature Extraction) -> Flatten -> Dense (Decision)
-- **Output:** 3 Actions (0=Gas, 1=Brake, 2=None)
+## Reward Design
+
+There is no native game API in this project, so PPO uses reward proxies extracted from the live screen:
+
+- **Distance traveled proxy:** estimated from horizontal scene motion in a configurable crop
+- **Fuel efficiency proxy:** progress normalized against observed fuel depletion
+- **Survival bonus:** small positive reward each step
+- **Failure penalty:** negative reward when the vehicle stagnates too long or the episode ends
+
+This is enough to build a real RL fine-tuning loop, but the reward extraction is still heuristic. Expect to tune the reward regions for your machine and HUD layout.
+
+## Configuration
+
+If your game window moves or the HUD layout changes, update these constants:
+
+- `CAPTURE_REGION` in [scripts/datacapture.py](/Users/rutvijjoshi/Projects/hill-climb-racing/scripts/datacapture.py)
+- `CAPTURE_REGION` in [scripts/rl_env.py](/Users/rutvijjoshi/Projects/hill-climb-racing/scripts/rl_env.py)
+- `FUEL_REGION` in [scripts/rl_env.py](/Users/rutvijjoshi/Projects/hill-climb-racing/scripts/rl_env.py)
+- `PROGRESS_REGION` in [scripts/rl_env.py](/Users/rutvijjoshi/Projects/hill-climb-racing/scripts/rl_env.py)
+- `AUTO_RESET_KEYS` in [scripts/rl_env.py](/Users/rutvijjoshi/Projects/hill-climb-racing/scripts/rl_env.py) if the game can be restarted from the keyboard
+
+Example:
+
+```python
+CAPTURE_REGION = {"top": 75, "left": 17, "width": 1401, "height": 790}
+```
+
+## Model Design
+
+- Input: `64x64x3` RGB frame
+- Shared visual backbone: 3 convolution blocks plus a dense feature layer
+- Behavioral cloning stage: categorical CNN policy
+- RL stage: PPO actor-critic with policy logits and a scalar value head
+- Actions: `0=Gas`, `1=Brake`, `2=None`
